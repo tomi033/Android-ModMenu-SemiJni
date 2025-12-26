@@ -1,10 +1,6 @@
 name: Android CI
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -13,18 +9,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up JDK 11
+      - name: Set up JDK 17 (Android Studio default)
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
-          cache: gradle
       
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      
-      - name: Grant execute permission for gradlew
+      - name: Make gradlew executable
         run: chmod +x gradlew
       
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Build Android project
+        run: ./gradlew assembleDebug
