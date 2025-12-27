@@ -1,82 +1,61 @@
-name: Android Mod Menu Build
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Ambil semua history, penting untuk file .jar
-
-    - name: Setup JDK 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Accept Android SDK Licenses
-      run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-    - name: 🔧 FIX - Check and Repair Gradle Wrapper
-      run: |
-        # Cek apakah gradle-wrapper.jar ada
-        if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-          echo "❌ gradle-wrapper.jar MISSING! Creating it..."
-          mkdir -p gradle/wrapper
-          # Download gradle wrapper langsung dari repositori Gradle
-          wget -q -O gradle/wrapper/gradle-wrapper.jar \
-            https://repo.maven.apache.org/maven2/gradle/wrapper/gradle-wrapper/8.5/gradle-wrapper-8.5.jar
-          
-          # Jika gradle-wrapper.properties juga hilang, buat yang dasar
-          if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
-            echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip" > gradle/wrapper/gradle-wrapper.properties
-          fi
-        else
-          echo "✅ gradle-wrapper.jar already exists"
-        fi
-        
-        # Pastikan gradlew executable
-        chmod +x gradlew
-        
-        # Test jika wrapper berfungsi
-        java -jar gradle/wrapper/gradle-wrapper.jar --version || echo "⚠️  Wrapper test failed, but continuing..."
-
-    - name: Build Native Code (NDK/CMake)
-      run: |
-        # Build native libraries
-        ./gradlew :app:externalNativeBuildRelease
-
-    - name: Build APK
-      run: |
-        # Build APK debug dulu untuk testing
-        ./gradlew assembleDebug --stacktrace
-
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: modmenu-apk
-        path: app/build/outputs/apk/debug/*.apk
-        retention-days: 7
-
-    - name: Upload Native Libraries
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: native-libs
-        path: |
-          app/build/intermediates/merged_native_libs/
-          app/build/intermediates/stripped_native_libs/
-        retention-days: 7
+- name: 🔧 FIX - Check and Repair Gradle Wrapper
+  run: |
+    echo "=== Checking Gradle Wrapper ==="
+    
+    # 1. Cek apakah gradle-wrapper.jar sudah ada
+    if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
+      echo "✅ gradle-wrapper.jar already exists"
+    else
+      echo "❌ gradle-wrapper.jar MISSING! Creating it..."
+      mkdir -p gradle/wrapper
+      
+      # 2. Coba download dari beberapa sumber berbeda
+      echo "Trying to download gradle-wrapper.jar..."
+      
+      # SUMBER 1: Dari Maven Central (lebih reliable)
+      if curl -L -o gradle/wrapper/gradle-wrapper.jar \
+         "https://repo.maven.apache.org/maven2/gradle/wrapper/gradle-wrapper/8.5/gradle-wrapper-8.5.jar"; then
+        echo "✅ Downloaded from Maven Central"
+      else
+        # SUMBER 2: Dari GitHub (alternatif)
+        echo "Trying alternative source..."
+        curl -L -o gradle/wrapper/gradle-wrapper.jar \
+          "https://github.com/gradle/gradle/raw/refs/tags/v8.5/bin/gradle/wrapper/gradle-wrapper.jar"
+      fi
+      
+      # 3. Verifikasi file berhasil didownload
+      if [ -f gradle/wrapper/gradle-wrapper.jar ]; then
+        echo "✅ gradle-wrapper.jar successfully downloaded"
+        ls -la gradle/wrapper/gradle-wrapper.jar
+      else
+        echo "❌ ERROR: Failed to download gradle-wrapper.jar"
+        echo "Creating empty file as fallback..."
+        touch gradle/wrapper/gradle-wrapper.jar
+      fi
+    fi
+    
+    # 4. Buat gradle-wrapper.properties jika tidak ada
+    if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
+      echo "Creating gradle-wrapper.properties..."
+      echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
+      echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
+      echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip" >> gradle/wrapper/gradle-wrapper.properties
+      echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
+      echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
+    fi
+    
+    # 5. Pastikan gradlew executable
+    if [ -f gradlew ]; then
+      chmod +x gradlew
+      echo "✅ gradlew is now executable"
+    else
+      echo "⚠️  gradlew file not found, creating basic one..."
+      echo '#!/usr/bin/env bash' > gradlew
+      echo 'java -jar gradle/wrapper/gradle-wrapper.jar "$@"' >> gradlew
+      chmod +x gradlew
+    fi
+    
+    # 6. Tampilkan struktur folder
+    echo "=== Final Structure ==="
+    ls -la gradle/wrapper/
+    echo "File size of gradle-wrapper.jar: $(wc -c < gradle/wrapper/gradle-wrapper.jar) bytes"
